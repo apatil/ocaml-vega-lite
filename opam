@@ -1,0 +1,19 @@
+opam-version: "1.2"
+name: "vega-lite"
+version: "0.0.1"
+maintainer: "Anand Patil <anand.prabhakar.patil@gmail.com>"
+authors: [
+  "Anand Patil <anand.prabhakar.patil@gmail.com>"
+]
+homepage: "https://github.com/apatil/ocaml-vega-lite"
+bug-reports: "https://github.com/apatil/ocaml-vega-lite"
+license: "MIT"
+dev-repo: "https://github.com/apatil/ocaml-vega-lite.git"
+build: [ [make "all"] ]
+install: [make "install"]
+remove: ["ocamlfind" "remove" "vega-lite"]
+depends: [
+  "ocamlfind" {build}
+  "yojson" {>= "1.1.6"}
+]
+available: [ ocaml-version >= "4.03.0" ]
