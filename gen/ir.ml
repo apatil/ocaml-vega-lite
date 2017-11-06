@@ -24,10 +24,13 @@ and field = (string * typeRef * description * required)
 (* The type of references to other types within type definitions *)
 and typeRef =
   | Num of int option * int option
+  | Float
+  | Int
   | String
   | Bool
   | Null
   | JSON (* Note, when 'object' occurs in type references it means 'any'. We represent this as Yojson *)
+  | AnonymousVariant of ctor list
   | Ref of string
   | List of typeRef
 let rec equalTypeRef (tr1 : typeRef) (tr2 : typeRef) : bool =
@@ -40,6 +43,10 @@ let rec equalTypeRef (tr1 : typeRef) (tr2 : typeRef) : bool =
   | (Bool, Bool) -> true
   | (Null, Null) -> true
   | (JSON, JSON) -> true
+  | (AnonymousVariant cl1, AnonymousVariant cl2) -> let ctor_equal ((n1, tl1) , (n2, tl2)) =
+      (String.equal n1 n2) && List.for_all (fun (ctr1, ctr2) -> equalTypeRef ctr1 ctr2) @@ List.combine tl1 tl2
+    in
+    List.for_all ctor_equal @@ List.combine cl1 cl2
   | (Ref s1, Ref s2) -> String.equal s1 s2
   | (List x1, List x2) -> equalTypeRef x1 x2
   | _ -> false
@@ -68,7 +75,7 @@ let list_equal (compare : 'a -> 'a -> bool) (l1 : 'a list) (l2 : 'a list) : bool
 type typeSpec =
   (* EG, | a | b of (t1 * t2). The string in the inner tuple is a description *)
   | Variant of ctor list
-  | Record of field list
+  | Record of (field list * typeRef option)
   | Alias of typeRef
 
 let map_of_fieldlist (fl : field list) : typeRef StringMap.t =
@@ -85,10 +92,13 @@ let equalTypeSpec (t1 : typeSpec) (t2 : typeSpec) : bool =
     let s1 = map_of_bindings cl1 in
     let s2 = map_of_bindings cl2 in
     StringMap.equal (list_equal equalTypeRef) s1 s2
-  | (Record fl1, Record fl2) ->
+  | (Record (fl1, a1), Record (fl2, a2)) ->
     let s1 = map_of_fieldlist fl1 in
     let s2 = map_of_fieldlist fl2 in
-    StringMap.equal equalTypeRef s1 s2
+    (StringMap.equal equalTypeRef s1 s2) && (match (a1, a2) with
+        | (Some tr1, Some tr2) -> equalTypeRef tr1 tr2
+        | (None, None) -> true
+        | _ -> false)
   (* Aliases are always distinct, that's the point of them *)
   | (Alias s1, _) -> false
   | (_, Alias s2) -> false
@@ -110,13 +120,6 @@ let chooseModuleName (name : string) : string =
 
 (* The IR data structure is a map from type names to type specifications. *)
 type accum = (typeSpec * description) StringMap.t
-
-(*
-TODO: use moduleName and moduleType keys, which wrap strings capitalized like Module and Module.t .
-Use the type system to be sure the keys of typeSpec and the references to other types are formatted
-right. The point of doing this is to make sure the references are correct when you wrap everything
-in modules.
-*)
 
 (* A merge function for two sets of type specs that makes sure no names are duplicated. *)
 let merge (t1 : accum) (t2 : accum) : (accum, string) result =
@@ -153,12 +156,15 @@ schema, we have to make up our own names for them.
 let rec chooseCtorName (name : string) (typ : typeRef) : string =
   match typ with
   | Ref s -> chooseVariantName s
-  | Num _ -> "Number"
+  | Num _ -> "Num"
+  | Float -> "Float"
+  | Int -> "Int"
   | String -> "String"
-  | Bool -> "Boolean"
+  | Bool -> "Bool"
   | Null -> "Null"
-  | List t -> (chooseCtorName name t) ^ "_List"
-  | JSON -> "JSON"
+  | List t -> (chooseCtorName name t) ^ "s"
+  | AnonymousVariant _ -> "Variant"
+  | JSON -> "Json"
 
 let makeUnique (sofar : accum) (name : string) : (string, string) result =
   let suffixes = [""; "_1"; "_2"; "_3"; "_4"; "_5"] in
@@ -175,7 +181,7 @@ let makeUnique (sofar : accum) (name : string) : (string, string) result =
 let chooseTypeName (name : string) (sofar : accum) (ts : typeSpec) : (string, string) result =
   match ts with
   | Variant vl -> makeUnique sofar (name ^ "_Variant")
-  | Record rl -> makeUnique sofar (name ^ "_Record")
+  | Record _ -> makeUnique sofar name
   | Alias _ -> Error "chooseTypeName: can't handle alias, why would you even want that."
 
 
@@ -302,15 +308,21 @@ let rec parseVariant : (typeSpec * accum) parser = fun tSofar name node ->
     (* First, check that the parse has not already failed. *)
     let%bind (innerTypesSofar, ctorsSofar) = sofar in
 
-    (* If the constructor is a simple enum, flatten it into the full variant. *)
-    let simpleCase =
-      let%bind enum = parseFlatVariant tSofar "__name" next in
-      match enum with
-      | Variant enumCtors -> Ok (innerTypesSofar, List.append ctorsSofar enumCtors)
-      | _ -> Error "Unexpected non-variant type from parseFlatVariant"
+    (* If the constructor is a variant, flatten it into the full variant. *)
+    let variantCase : ((accum * (ctor list)), string) result =
+      let%bind (v, innerTypes) = untilSuccess "variantCase: " [
+        (wrapWithInnerTypes parseFlatVariant) tSofar "__name" next;
+        (wrapWithInnerTypes parseSimpleVariant) tSofar "__name" next;
+        parseVariant tSofar "__name" next
+      ]
+      in
+      let%bind allInnerTypes = merge innerTypesSofar innerTypes in
+      match v with
+      | Variant ctors -> Ok (allInnerTypes, List.append ctorsSofar ctors)
+      | _ -> Error "Unexpected non-variant type from parseVariant"
     in
     (* Otherwise, parse it as a parameter-bearing constructor. *)
-    let nonSimpleCase =
+    let otherCase : ((accum * (ctor list)), string) result =
       (*
         Check that the node under consideration represents a valid type reference. In the
         process of parsing the type reference we may have to emit anonymous type specs,
@@ -332,7 +344,7 @@ let rec parseVariant : (typeSpec * accum) parser = fun tSofar name node ->
       let allCtors : ctor list = (ctorName, [ctorTypeRef]) :: ctorsSofar in
       Ok (allInnerTypes, allCtors)
     in
-    untilSuccess "No parse" [simpleCase; nonSimpleCase]
+    untilSuccess "No parse" [variantCase; otherCase]
   in
   let%bind (innerTypes, ctors) = List.fold_left reducer (Ok (StringMap.empty, [])) variantNodes in
   (*
@@ -342,10 +354,6 @@ let rec parseVariant : (typeSpec * accum) parser = fun tSofar name node ->
   *)
   Ok ((Variant ctors), innerTypes)
 
-(*
-TODO: Review what you're doing with $ref's in anyOf, they should be similar - keep separate in
-the type system but flatten them in the json
-*)
 and parseRecord : (typeSpec * accum) parser = fun tSofar name node ->
   prependError "parseRecord: " @@
   (*
@@ -375,15 +383,18 @@ and parseRecord : (typeSpec * accum) parser = fun tSofar name node ->
     | Ok p -> assertAssoc p
   in
   let%bind additional = match jsonGet node "additionalProperties" with
-    | Ok a -> Ok a
-    | Error _ -> Ok (`Bool false)
+    | Ok (`Bool false) -> Ok None
+    | Ok a ->
+      let%bind (tr, _) = parseTypeRef tSofar name a in
+      Ok (Some tr)
+    | Error _ -> Ok None
   in
   let%bind required = match jsonGet node "required" with
     | Ok n -> assertStringList n
     | _ -> Ok []
   in
   let%bind _ = match (properties, additional) with
-    | ([], `Bool false) -> Error "Expected either 'properties' or 'additionalProperties'"
+    | ([], None) -> Error "Expected either 'properties' or 'additionalProperties'"
     | _ -> Ok ()
   in
   (* Now parse the 'properties' if present. *)
@@ -426,40 +437,24 @@ and parseRecord : (typeSpec * accum) parser = fun tSofar name node ->
     end
   end
   in
-  (*
-  Now parse additionalProperties if present. It will parse to an additional
-  field whose name will be derived from the reference.
-  *)
-  let%bind additionalFields = begin
-    prependError ("additional properties: ") @@
-    match additional with
-    | `Bool false -> Ok []
-    | _ -> let%bind (tr, _) = parseTypeRef tSofar name additional in
-      (match tr with
-       | Ref refName -> Ok [(String.uncapitalize_ascii refName, tr, None, false)]
-       | _ -> Error "Expected to parse Ref or nothing")
-  end
-  in
   (* Combine properties with additionalProperties and return. *)
-  Ok ((Record (List.append ownFields additionalFields)), ownInnerTypes)
+  Ok ((Record (ownFields, additional)), ownInnerTypes)
 
-
-(*
-Parse an anonymous variant. We have to parse the variant, then splice it into
-the inner type specs and return a reference to it.
-*)
 and parseTR_anonVariant : (typeRef * accum) parser = fun sofar name node ->
-  let%bind (variant, innerTypes) = untilSuccess "parseTR_anonVariant: No parse" [
+  let%bind (typ, innerTypes) = untilSuccess "parseTR_anonVariant: No parse" [
     (wrapWithInnerTypes parseFlatVariant) sofar name node;
     (wrapWithInnerTypes parseSimpleVariant) sofar name node;
     parseVariant sofar name node;
   ]
   in
-  let%bind takenNames = merge innerTypes sofar in
-  let%bind typName = chooseTypeName name takenNames variant in
-  let ref = Ref typName in
-  Ok (ref, StringMap.add typName (variant, None) innerTypes)
+  match typ with
+  | Variant ctors -> Ok (AnonymousVariant ctors, innerTypes)
+  | _ -> Error "Expected to parse Variant or nothing"
 
+(*
+  Parse an anonymous record. We have to parse the record, then splice it into
+  the inner type specs and return a reference to it.
+*)
 and parseTR_anonRecord : (typeRef * accum) parser = fun sofar name node ->
   prependError "parseTR_anonRecord: " @@
   let%bind (record, innerTypes) = parseRecord sofar name node in
@@ -517,6 +512,15 @@ and parseTypeRef : (typeRef * accum) parser = fun sofar name node ->
     parseTR_json sofar name node;
   ]
 
+and parseAlias : typeSpec parser = fun sofar name node ->
+  let modName = chooseModuleName name in
+  let%bind tr = untilSuccess ("parseAliasSpec: no parse of '" ^ name ^ "'") [
+      parseReference sofar modName node;
+      parseSimpleType sofar modName node;
+      parseEmptyNode sofar modName node;
+    ] in
+  Ok (Alias tr)
+
 (*
 Parses a variant that isn't an enum, ie an allOf. The constructors are not mentioned
 explicitly in the spec, we need to introduce them in ocaml for polymorphism. Most will
@@ -540,12 +544,8 @@ let parseRecordSpec : accum parser = fun sofar name node ->
 (* Parses a type alias, represented in the schema as a type reference. *)
 let parseAliasSpec : accum parser = fun sofar name node ->
   let modName = chooseModuleName name in
-  let%bind tr = untilSuccess ("parseAliasSpec: no parse of '" ^ name ^ "'") [
-    parseReference sofar modName node;
-    parseSimpleType sofar modName node;
-    parseEmptyNode sofar modName node;
-  ] in
-  Ok (StringMap.singleton modName ((Alias tr), None))
+  let%bind myType = parseAlias sofar name node in
+  Ok (StringMap.singleton modName (myType, None))
 
 (*
 Parses a top-level type spec. These are all variants or records, there are no
@@ -566,13 +566,14 @@ let rec get_tr_references (tr : typeRef) : string list =
   | Ref s -> [s]
   | _ -> []
 
-let get_references (t : typeSpec) : string list =
+let rec get_references (t : typeSpec) : string list =
   match t with
   | Alias tr -> get_tr_references tr
   | Variant ctors -> List.map (fun (_, trs) -> List.map get_tr_references trs |> List.flatten) ctors |> List.flatten
-  | Record fields -> List.map (fun (_, tr, _, _) -> get_tr_references tr) fields |> List.flatten
+  | Record (fields, None) -> List.map (fun (_, tr, _, _) -> get_tr_references tr) fields |> List.flatten
+  | Record (fields, Some a) -> List.flatten [(get_tr_references a); get_references @@ Record (fields, None)]
 
-let graph_of_accum (a : accum) : TopoSort.graph =
+(* let graph_of_accum (a : accum) : TopoSort.graph =
   let reducer (sofar : TopoSort.graph) ((name, (spec, desc)) : (string * (typeSpec * description))) : TopoSort.graph =
     let refs = get_references spec in
     let _ = if (List.length refs) > 0 then print_endline ("References in " ^ name ^ " are " ^ (String.concat ", " refs)) else () in
@@ -588,7 +589,7 @@ let tsort (a : accum) : (t, string) result =
     let%bind (spec, desc) = mapGet next a in
     Ok ((next, spec, desc) :: sofar)
   in
-  List.fold_left reducer (Ok []) sorted_names
+  List.fold_left reducer (Ok []) sorted_names *)
 
 
 (* The top-level parser *)

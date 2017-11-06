@@ -78,11 +78,52 @@ let tuple_type (typs : Parsetree.core_type list) : Parsetree.core_type =
 let dot (e : Parsetree.expression) (attr :  string) : Parsetree.expression =
   expr_of_desc @@ Parsetree.Pexp_field (e, ident_of_name attr)
 
+(* Generic record literal expression *)
+let record_literal (base : Parsetree.expression option) (fields : (string * Parsetree.expression) list) : Parsetree.expression =
+  let mapper (fieldName, fieldVal) : (Longident.t Asttypes.loc * Parsetree.expression) =
+    (ident_of_name fieldName, fieldVal)
+  in
+  expr_of_desc @@ Parsetree.Pexp_record (List.map mapper fields, base)
+
+(* Gets a record alteration expression, eg {x with k = v} *)
+let record_alteration (base : Parsetree.expression) (fields : (string * Parsetree.expression) list) : Parsetree.expression =
+  record_literal (Some base) fields
+
+(* Gets a variant expression, eg `Hi x*)
+let variant_expr (name : string) (param : Parsetree.expression option) : Parsetree.expression =
+  expr_of_desc @@ Parsetree.Pexp_variant (name, param)
+
+let tuple_of_exprs (exprs : Parsetree.expression list) : Parsetree.expression =
+  expr_of_desc @@ Parsetree.Pexp_tuple exprs
+
+let deriver_attributes (derivers : string list) : Parsetree.attributes =
+  let open Parsetree in
+  match derivers with
+  | [] -> []
+  | _ ->
+    let deriver_exprs = List.map ident_expr derivers in
+    [(
+      Asttypes.{txt = "deriving"; loc = Location.none},
+      PStr [%str [%e tuple_of_exprs deriver_exprs]]
+        (* [
+          structure_item (stx.ml[1,0+35]..[1,0+47])
+            Pstr_eval
+            expression (stx.ml[1,0+35]..[1,0+47])
+            Pexp_tuple
+            [
+              expression (stx.ml[1,0+35]..[1,0+39])
+                Pexp_ident "lens" (stx.ml[1,0+35]..[1,0+39])
+                expression (stx.ml[1,0+41]..[1,0+47])
+                Pexp_ident "yojson" (stx.ml[1,0+41]..[1,0+47])
+            ]
+        ] *)
+    )]
+
 (*
 Converts a P type_kind, which is 'abstract', 'open', 'record' or 'variant'
 into a type declaration with a name.
 *)
-let type_decl_of_kind (name : string) (kind : Parsetree.type_kind) : Parsetree.type_declaration =
+let type_decl_of_kind (derivers : string list) (name : string) (kind : Parsetree.type_kind) : Parsetree.type_declaration =
   Parsetree.{
     ptype_name = Asttypes.{txt = name; loc = Location.none};
     ptype_params = [];
@@ -90,9 +131,25 @@ let type_decl_of_kind (name : string) (kind : Parsetree.type_kind) : Parsetree.t
     ptype_kind = kind;
     ptype_private = Asttypes.Public;
     ptype_manifest = None;
-    ptype_attributes = [];
+    ptype_attributes = deriver_attributes derivers;
     ptype_loc = Location.none;
   }
+
+let type_decl_of_type (derivers : string list) (name : string) (typ : Parsetree.core_type) : Parsetree.type_declaration =
+  Parsetree.{
+    ptype_name = Asttypes.{txt = name; loc = Location.none};
+    ptype_params = [];
+    ptype_cstrs = [];
+    ptype_kind = Ptype_abstract;
+    ptype_private = Asttypes.Public;
+    ptype_manifest = (Some typ);
+    ptype_attributes = deriver_attributes derivers;
+    ptype_loc = Location.none;
+  }
+
+
+let wrap_in_open (name : string) (expr : Parsetree.expression) : Parsetree.expression =
+  expr_of_desc @@ Parsetree.Pexp_open (Asttypes.Fresh, ident_of_name name, expr)
 
 (*
 Create a label declaration suitable for use in a record type from a field name
@@ -108,8 +165,8 @@ let label_decl (name : string) (typ : Parsetree.core_type) : Parsetree.label_dec
   }
 
 (* Create a record type declaration from label declarations and a type name. *)
-let rectype_of_labels (name : string) (labels : Parsetree.label_declaration list) : Parsetree.type_declaration =
-  type_decl_of_kind name @@ Parsetree.Ptype_record labels
+let rectype_of_labels (derivers: string list) (name : string) (labels : Parsetree.label_declaration list) : Parsetree.type_declaration =
+  type_decl_of_kind derivers name @@ Parsetree.Ptype_record labels
 
 (* Create a single-argument function expression. *)
 let fun_expr (argname : string) (intyp: Parsetree.core_type) (rhs : Parsetree.expression) (outtyp : Parsetree.core_type option) : Parsetree.expression =
@@ -174,9 +231,9 @@ let rec expr_of_yojson (j : Yojson.Basic.json) : Parsetree.expression =
 
 let case_of_pat_and_expr (pat : Parsetree.pattern) (rhs : Parsetree.expression) : Parsetree.case =
   Parsetree.{
-    pc_lhs = pat; (* TODO: parameters *)
+    pc_lhs = pat;
     pc_guard = None;
-    pc_rhs = rhs (* TODO: parameters *)
+    pc_rhs = rhs
   }
 
 (* Wraps a pattern 'x' in 'Vname x' *)
@@ -201,26 +258,46 @@ let to_result_type (t : Parsetree.core_type) : Parsetree.core_type =
 let module_of_sitems (modname : string) (items : Parsetree.structure_item list) =
   [%str [%%s items]]
 
-(* Wraps a type declaration in a module structure item *)
-let sitem_of_tdecl (decl: Parsetree.type_declaration) : Parsetree.structure_item =
+let sigitem_of_desc (desc: Parsetree.signature_item_desc) : Parsetree.signature_item =
   Parsetree.{
-    pstr_desc = Pstr_type (Asttypes.Nonrecursive, [decl]);
-    pstr_loc = Location.none;
-  }
-
-let sigitem_of_tdecl (decl: Parsetree.type_declaration) : Parsetree.signature_item =
-  Parsetree.{
-    psig_desc = Psig_type (Asttypes.Nonrecursive, [decl]);
+    psig_desc = desc;
     psig_loc = Location.none;
   }
+
+let sigitem_val (name : string) (typ : Parsetree.core_type) : Parsetree.signature_item =
+  let valdesc = Parsetree.{
+      pval_name = Asttypes.{txt = name; loc = Location.none};
+      pval_type = typ;
+      pval_prim = [];
+      pval_attributes = [];
+      pval_loc = Location.none;
+    }
+  in
+  sigitem_of_desc @@ Parsetree.Psig_value valdesc
+
+let sigitem_of_tdecl (decl: Parsetree.type_declaration) : Parsetree.signature_item =
+  sigitem_of_desc @@ Parsetree.Psig_type (Asttypes.Nonrecursive, [decl])
 
 (*
 Wraps an expression and its binding in a structure item, eg
 sitem_of_expr [%pat? x] [%expr 3] -> "let x = 3"
 *)
+let sitem_of_desc (desc: Parsetree.structure_item_desc) : Parsetree.structure_item =
+  Parsetree.{
+    pstr_desc = desc;
+    pstr_loc = Location.none;
+  }
+
 let sitem_of_expr (name : string) (rhs : Parsetree.expression) : Parsetree.structure_item =
   let pat = pat_of_name name in
   [%stri let [%p pat] = [%e rhs]]
+
+(* Wraps a type declaration in a module structure item *)
+let sitem_of_tdecl (decl: Parsetree.type_declaration) : Parsetree.structure_item =
+  sitem_of_desc @@ Parsetree.Pstr_type (Asttypes.Nonrecursive, [decl])
+
+let sitem_of_mb (mb : Parsetree.module_binding) : Parsetree.structure_item =
+  sitem_of_desc @@ Parsetree.Pstr_module mb
 
 let modtype_of_sig (sg : Parsetree.signature) : Parsetree.module_type =
   Parsetree.{
@@ -339,3 +416,14 @@ let dedent_mutrec_mods (raw : string) : string =
 (* Dumps a module to code *)
 let string_of_struct (items : Parsetree.structure) : string =
   Pprintast.string_of_structure items
+
+let regexp_matches (re : Str.regexp) (s : string) : bool =
+  try
+    let _ = Str.search_forward re s 0 in true
+  with
+  | _ -> false
+
+let keep_somes (l : 'a option list) : 'a list =
+  List.fold_left (fun sofar next -> match next with
+      | None -> sofar
+      | Some x -> x :: sofar) [] l

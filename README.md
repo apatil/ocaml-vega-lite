@@ -2,72 +2,61 @@
 
 This package contains generated OCaml types from the Vega-Lite v2
 [spec](https://vega.github.io/schema/vega-lite/v2.json). It is intended to be
-typesafe, complete and light on dependencies.
+complete and safe, in the sense that any representable value converts to a valid
+Vega-Lite object.
 
-Status: **pre-release**
+Status: **pre-release**, expect breaking changes.
 
 ## Usage
 
-The vega-lite-101.ml example shows you how to create a plot spec in OCaml, then
+The bar.ml example shows you how to create a plot spec in OCaml, then
 dump it to Yojson and thence to a string. Here's the code:
 
 ```ocaml
+(* https://vega.github.io/vega-lite/examples/bar.html *)
+
+open VegaLite.V2
+
 (*
-Create a row type and equip it with a to-yojson function so it can be used as
-inline data.
+  Create a row type and equip it with a to-yojson function so it can be used as
+  inline data.
 *)
 type row = {
-  x : float;
-  y : float
+  a : string;
+  b : int
 } [@@deriving yojson]
 
-let () =
-  let open VegaLite.V2 in
-  (* Inline data must be a list of Yojson.Safe.json objects. *)
-  let dataValues = List.map row_to_yojson [
-      {x=0.0; y=1.0};
-      {x=1.0; y=0.0};
-      {x=2.0; y=1.0}
-    ]
-  in
-  (* Wrap the JSON data in a vega-lite Data object *)
-  let data = `InlineData InlineData.{
-      values = `JSON_List dataValues;
-      format = None
-    }
-  in
-  (*
-  TopLevelFacetedUnitSpec, the top-level single-view plot spec type, requires an
-  encoding and a mark. Marks are usually simple variants, but encodings are
-  represented by a relatively featureful record type.
-  *)
-  let encoding : EncodingWithFacet.t =
-    let xfield = PositionFieldDef.make ~field:(Some (`String "x")) `Ordinal in
-    let yfield = PositionFieldDef.make ~field:(Some (`String "y")) `Ordinal in
-    EncodingWithFacet.make
-      ~x:(Some (`PositionFieldDef xfield))
-      ~y:(Some (`PositionFieldDef yfield))
-      ()
-  in
-  (*
+(* Inline data must be a list of Yojson.Safe.json objects. *)
+let dataValues = [
+    {a = "A"; b = 28}; {a = "B"; b = 55}; {a = "C"; b = 43};
+    {a = "D"; b = 91}; {a = "E"; b = 81}; {a = "F"; b = 53};
+    {a = "G"; b = 19}; {a = "H"; b = 87}; {a = "I"; b = 52}
+  ]
+
+(* Wrap the JSON data in a vega-lite Data object *)
+let dat = `Inline InlineData.{
+    values = `Jsons (List.map row_to_yojson dataValues);
+    format = None
+  }
+
+(* Create a VegaLite encoding for a bar chart. *)
+let enc =
+  let xf = PositionFieldDef.(make `Ordinal |> field (`String "a")) in
+  let yf = PositionFieldDef.(make `Quantitative |> field (`String "b")) in
+  EncodingWithFacet.(make () |> x (`Field xf) |> y (`Field yf))
+
+(*
   Actually create the spec. We'll accept the defaults for most fields, so they'll
   be 'None' in the OCaml object and will be omitted from the JSON. This spec will
   include the data and the encoding that we created above.
-  *)
-  let spec = TopLevelFacetedUnitSpec.make
-      ~name:(Some "HelloWorld")
-      ~title:(Some (`String "Example Plot"))
-      ~description:(Some "An example plot to show you how to use this package")
-      ~data:(Some data)
-      ~width:(Some 640)
-      ~height:(Some 480)
-      (`Mark `Line) encoding
-  in
-  (*
-  Transform the spec to JSON, transform the JSON to a string and print the string
-  on stdout.
-  *)
-  spec |> TopLevelFacetedUnitSpec.to_yojson |> Yojson.Safe.pretty_to_string |> print_endline
+*)
+let jsonSpec = TopLevelFacetedUnitSpec.(make (`Mark `Bar)
+  |> description "A simple bar chart with embedded data."
+  |> data dat
+  |> encoding enc
+  |> to_yojson)
+
+let () = jsonSpec |> Yojson.Safe.pretty_to_string |> print_endline
 ```
 
 
@@ -76,7 +65,7 @@ You can run it like this:
 ```bash
 # opam install ocamlbuild vega-lite ppx_deriving_yojson
 cd examples
-ocamlbuild -use-ocamlfind -package vega-lite,ppx_deriving_yojson vega-lite-101.byte --
+ocamlbuild -use-ocamlfind -package vega-lite,ppx_deriving_yojson bar.byte --
 ```
 
 You'll see JSON output like this:
@@ -84,28 +73,24 @@ You'll see JSON output like this:
 ```json
 {
   "$schema": "https://vega.github.io/schema/vega-lite/v2.json",
+  "description": "A simple bar chart with embedded data.",
   "data": {
     "values": [
-      { "x": 0.0, "y": 1.0 },
-      { "x": 1.0, "y": 0.0 },
-      { "x": 2.0, "y": 1.0 }
+      {"a": "A","b": 28}, {"a": "B","b": 55}, {"a": "C","b": 43},
+      {"a": "D","b": 91}, {"a": "E","b": 81}, {"a": "F","b": 53},
+      {"a": "G","b": 19}, {"a": "H","b": 87}, {"a": "I","b": 52}
     ]
   },
-  "description": "An example plot to show you how to use this package",
+  "mark": "bar",
   "encoding": {
-    "x": { "field": "x", "type": "ordinal" },
-    "y": { "field": "y", "type": "ordinal" }
-  },
-  "height": 480,
-  "mark": "line",
-  "name": "HelloWorld",
-  "title": "Example Plot",
-  "width": 640
+    "x": {"field": "a", "type": "ordinal"},
+    "y": {"field": "b", "type": "quantitative"}
+  }
 }
 ```
 
 Paste it into the [online Vega editor](https://vega.github.io/editor/#/) and you should
-see a simple plot like [this](https://vega.github.io/editor/#/gist/vega-lite/apatil/aeb0a6fdc792aa87ea20c16dcd32f13e).
+see a simple plot like [this](https://vega.github.io/vega-lite/examples/bar.html).
 
 ## Contributing
 
@@ -121,3 +106,17 @@ To keep the generated code in sync with your repo, you might want to set
 cd gen
 ./gen.sh
 ```
+
+## Derivers
+
+If you want the Vega-Lite types to use particular [derivers](https://github.com/ocaml-ppx/ppx_deriving),
+you can generate your own version of this module with eg
+
+```bash
+cd gen
+./gen.sh lens fields
+```
+
+This will overwrite `./vegaLite.ml` with a version in which every record type
+derives [lens](https://github.com/janestreet/ppx_fields_conv) and
+[fields](https://github.com/janestreet/ppx_fields_conv).
