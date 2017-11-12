@@ -2,37 +2,39 @@
 
 open VegaLite.V2
 
-let dat = `Url (UrlData.make "data/seattle-weather.csv")
+let data = `Url (UrlData.make ~url:"data/seattle-weather.csv" ())
 
-let enc =
-  let xax = Axis.(make () |> title "Month of the year") in
+let encoding =
+  let xax = Axis.make ~title:"Month of the year" () in
 
-  let xf = PositionFieldDef.(make `Ordinal
-    |> timeUnit (`Single (`Local `Month))
-    |> field  (`String "date")
-    |> axis xax)
+  let xf = PositionFieldDef.make
+      ~typ:`Ordinal
+      ~timeUnit:(`Single (`Local `Month))
+      ~field:(`String "date")
+      ~axis:xax
+      ()
   in
 
-  let leg = Legend.(make () |> title "Weather type") in
+  let legend = Legend.make ~title:"Weather type" () in
 
-  let sc = Scale.(make ()
-    |> domain (`Strings ["sun"; "fog"; "drizzle"; "rain"; "snow"])
-    |> range (`Strings ["#e7ba52";"#c7c7c7";"#aec7e8";"#1f77b4";"#9467bd"])) in
-
-  let col = ConditionalLegendFieldDef.(make `Nominal
-    |> field (`String "weather")
-    |> legend leg
-    |> scale sc)
+  let scale = Scale.make
+    ~domain:(`Strings ["sun"; "fog"; "drizzle"; "rain"; "snow"])
+    ~range:(`Strings ["#e7ba52";"#c7c7c7";"#aec7e8";"#1f77b4";"#9467bd"])
+    ()
   in
 
-  let yf = PositionFieldDef.(make `Quantitative |> aggregate `Count) in
+  let col = ConditionalLegendFieldDef.make
+      ~typ:`Nominal
+      ~field:(`String "weather")
+      ~legend
+      ~scale
+      ()
+  in
 
-  EncodingWithFacet.(make ()
-    |> x (`Field xf)
-    |> y (`Field yf)
-    |> color (`Field col))
+  let yf = PositionFieldDef.make ~typ:`Quantitative ~aggregate:`Count () in
 
-let jsonSpec = TopLevelFacetedUnitSpec.(make (`Mark `Bar)
-  |> data dat
-  |> encoding enc
+  EncodingWithFacet.make ~color:(`Field col) ~x:(`Field xf) ~y:(`Field yf)  ()
+
+let jsonSpec = TopLevelFacetedUnitSpec.(
+    make ~mark:(`Mark `Bar) ~data ~encoding ()
   |> to_yojson)

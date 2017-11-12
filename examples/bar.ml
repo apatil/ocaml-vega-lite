@@ -24,27 +24,25 @@ let dataValues = [
   ]
 
 (* Wrap the JSON data in a vega-lite Data object *)
-let dat = `Inline InlineData.{
-    values = `Jsons (List.map row_to_yojson dataValues);
-    format = None
-  }
+let data = `Inline (InlineData.make ~values:(`Jsons (List.map row_to_yojson dataValues)) ())
 
 (* Create a VegaLite encoding for a bar chart. *)
-let enc =
-  let xf = PositionFieldDef.(make `Ordinal |> field (`String "a")) in
-  let yf = PositionFieldDef.(make `Quantitative |> field (`String "b")) in
-  EncodingWithFacet.(make () |> x (`Field xf) |> y (`Field yf))
+let encoding =
+  let xf = PositionFieldDef.make ~field:(`String "a") ~typ:`Ordinal () in
+  let yf = PositionFieldDef.make ~field:(`String "b") ~typ:`Quantitative () in
+  EncodingWithFacet.make ~x:(`Field xf) ~y:(`Field yf) ()
 
 (*
   Actually create the spec. We'll accept the defaults for most fields, so they'll
   be 'None' in the OCaml object and will be omitted from the JSON. This spec will
   include the data and the encoding that we created above.
 *)
-let jsonSpec = TopLevelFacetedUnitSpec.(make (`Mark `Bar)
-  |> description "A simple bar chart with embedded data."
-  |> data dat
-  |> encoding enc
-  |> to_yojson)
+let description = "A simple bar chart with embedded data."
+let jsonSpec =
+  let open TopLevelFacetedUnitSpec in
+  make ~data ~encoding ~mark:(`Mark `Bar) ~description ()
+  |> to_yojson
+
 
 (* Uncomment to print the JSON spec to stdout. *)
 (* let () = jsonSpec |> Yojson.Safe.pretty_to_string |> print_endline *)

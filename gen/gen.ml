@@ -17,10 +17,10 @@ let save_file (f : string) (contents : string) : unit =
 
 let mangle_unsafe_identifiers (raw : string) : string =
   match raw with
-  | "type" -> "type_"
-  | "and" -> "and_"
-  | "as" -> "as_"
-  | "or" -> "or_"
+  | "type" -> "typ"
+  | "and" -> "opAnd"
+  | "as" -> "nameAs"
+  | "or" -> "opOr"
   | "$schema" -> "schema"
   | _ -> raw
 
@@ -283,8 +283,10 @@ let of_json_of_ts (ts : Ir.typeSpec) : Parsetree.expression =
 (* TODO: DRY, move into gen_utils *)
 let record_literal (fields: Ir.field list) (additional : Ir.typeRef option) : Parsetree.expression =
   let mapper ((fieldName, _, _, _) : Ir.field) : (string * Parsetree.expression) =
-    let sfn = mangle_unsafe_identifiers fieldName in
-    (sfn, Gu.ident_expr sfn)
+    match fieldName with
+    | "$schema" -> ("schema", [%expr "https://vega.github.io/schema/vega-lite/v2.json"])
+    | _ -> let sfn = mangle_unsafe_identifiers fieldName in
+      (sfn, Gu.ident_expr sfn)
   in
   let els = List.map mapper fields in
   Gu.record_literal None @@ match additional with
@@ -311,46 +313,42 @@ let empty_record_of_ref (ir : Ir.t) (rn : string) : Parsetree.expression option 
 
 let dflt_of_field (ir : Ir.t) ((name, tr, _, required) : Ir.field) : Parsetree.expression option =
   match (name, tr, required) with
-    | ("$schema", _, true) -> Some [%expr "https://vega.github.io/schema/vega-lite/v2.json"]
-    | ("$schema", _, false) -> Some [%expr Some "https://vega.github.io/schema/vega-lite/v2.json"]
-    | (_, _, false) -> Some [%expr None]
-    | (_, (Ir.Ref rn),  true) -> (match empty_record_of_ref ir rn with
-        | Some reclit -> Some (Gu.wrap_in_open rn reclit)
-        | None -> None
-      )
-    | (_, _, true) -> None
+  | ("$schema", _, true) -> Some [%expr "https://vega.github.io/schema/vega-lite/v2.json"]
+  | (_, (Ir.Ref rn),  true) -> (match empty_record_of_ref ir rn with
+      | Some reclit -> Some (Gu.wrap_in_open rn reclit)
+      | None -> None
+    )
+  | _ -> None
 
 let maker_of_fields (ir : Ir.t) (mname : string) (fields: Ir.field list) (additional: Ir.typeRef option) : (Parsetree.core_type * Parsetree.expression) =
   let fcomp fld1 fld2 =
-    match (dflt_of_field ir fld1, dflt_of_field ir fld2) with
-    | (Some _, None) -> 1
-    | (None, Some _) -> -1
-    | _ -> let ((n1, _, _, _), (n2, _, _, _)) = (fld1, fld2) in String.compare n1 n2
+    match (fld1, fld2) with
+    | ((_, _, _, false), (_, _, _, true)) -> 1
+    | ((_, _, _, true), (_, _, _, false)) -> -1
+    | ((n1, _, _, _), (n2, _, _, _)) -> -(String.compare n1 n2)
   in
-  let some_required = List.exists (fun (_, _, _, r) -> r) fields in
   let fields = List.sort fcomp fields in
   let reclit = record_literal fields additional in
   let rect = Gu.simple_type "t" in
-  let res = match some_required with
-    | true -> (rect, reclit)
-    | false -> ([%type: unit -> [%t rect]], [%expr fun () -> [%e reclit]])
-  in
+  let res = ([%type: unit -> [%t rect]], [%expr fun () -> [%e reclit]]) in
   let reducer ((tsofar, esofar) : (Parsetree.core_type * Parsetree.expression)) ((name, tr, _, required): Ir.field) : (Parsetree.core_type * Parsetree.expression) =
-    let pname = mangle_unsafe_identifiers @@ String.uncapitalize_ascii name in
-    let typ = match required with
-      | false -> optionalizeType @@ type_of_tr "" tr
-      | true -> type_of_tr "" tr
-    in
-    let pat = Gu.pat_of_name pname in
-    let dflt = dflt_of_field ir (name, tr, None, required)
-    in
-    let lbl = match dflt with
-      | None -> Asttypes.Nolabel
-      | Some _ -> Asttypes.Optional pname
-    in
-    let e = Gu.expr_of_desc @@ Parsetree.Pexp_fun (lbl, dflt, pat, esofar) in
-    let t = Gu.type_of_desc @@ Parsetree.Ptyp_arrow (lbl, typ, tsofar) in
-    (t, e)
+    match name with
+    | "$schema" -> (tsofar, esofar)
+    | _ ->
+      let pname = mangle_unsafe_identifiers @@ String.uncapitalize_ascii name in
+      let (typ, required) = match (type_of_tr "" tr, required) with
+        | ([%type: [%t? typ_] option], _) -> (typ_, false)
+        | x -> x
+      in
+      let pat = Gu.pat_of_name pname in
+      let dflt = dflt_of_field ir (name, tr, None, required) in
+      let lbl = match required with
+        | true -> Asttypes.Labelled pname
+        | false -> Asttypes.Optional pname
+      in
+      let e = Gu.expr_of_desc @@ Parsetree.Pexp_fun (lbl, dflt, pat, esofar) in
+      let t = Gu.type_of_desc @@ Parsetree.Ptyp_arrow (lbl, typ, tsofar) in
+      (t, e)
   in
   let (ft, fe) = List.fold_left reducer res fields in
   match additional with
@@ -377,13 +375,14 @@ let deoptionalize (t : Parsetree.core_type) : Parsetree.core_type = match t with
   | _ -> t
 
 let setter_of_field ((fname, tr, _, required) : Ir.field) : (Parsetree.signature_item * Parsetree.structure_item) =
-  let setterName = mangle_unsafe_identifiers fname in
+  let fname = mangle_unsafe_identifiers fname in
+  let setterName = ("with" ^ String.capitalize_ascii fname) in
 
   let arg_t = deoptionalize @@ type_of_tr "" tr in
   let sigi = [%type: [%t arg_t] -> t -> t] |> Gu.sigitem_val setterName in
 
   let rhs = someIfOptional required [%expr v] in
-  let stri = [%expr fun v x -> [%e Gu.record_alteration [%expr x] [(setterName, rhs)]]] |> Gu.sitem_of_expr setterName in
+  let stri = [%expr fun v x -> [%e Gu.record_alteration [%expr x] [(fname, rhs)]]] |> Gu.sitem_of_expr setterName in
 
   (sigi, stri)
 
@@ -677,11 +676,25 @@ let squashNumVariants (ir : Ir.t) : Ir.t =
   in
   List.fold_left reducer [] ir
 
+let requireSchema (ir : Ir.t) : Ir.t =
+  let open Ir in
+  let reducer sofar (name, ts, desc) =
+    match ts with
+    | Record (fields, additional) ->
+      let mapper (fname, tr, desc, req) = match fname with
+        | "$schema" -> (fname, tr, desc, true)
+        | _ -> (fname, tr, desc, req)
+      in
+      (name, Record (List.map mapper fields, additional), desc) :: sofar
+    | _ -> (name, ts, desc) :: sofar
+  in
+  List.fold_left reducer [] ir
+
 let () =
   let open Unsafe in
   let derivers = Array.to_list Sys.argv |> List.tl in
   let schema = Yojson.Safe.from_file "./v2.0.0-rc2.json" in
-  let ir = Ir.parse schema |> unpackR |> squashSingletonVariants |> squashNumVariants |> squashAliases |>  nicknameIrCtors in
+  let ir = Ir.parse schema |> unpackR |> requireSchema |> squashSingletonVariants |> squashNumVariants |> squashAliases |>  nicknameIrCtors in
   let code = ir |> mods_of_ir derivers |> Gu.string_of_struct |> Gu.dedent_mutrec_mods |> insert_docs ir |> fun (code) -> ("(* Generated by gen/gen.ml *)\n\nmodule V2 = struct\n" ^ code ^ "\nend\n") in
   (*
     NOTE: The contsructors have to be emitted outside the modules rather than in
