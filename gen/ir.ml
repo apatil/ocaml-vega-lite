@@ -503,12 +503,12 @@ and parseTypeRef : (typeRef * accum) parser = fun sofar name node ->
   untilSuccess "parseTypeRef: no parse" [
     parseTR_list sofar name node;
     parseTR_number sofar name node;
-    parseTR_string sofar name node;
     parseTR_boolean sofar name node;
     parseTR_null sofar name node;
+    parseTR_anonVariant sofar name node;
+    parseTR_string sofar name node;
     parseTR_reference sofar name node;
     parseTR_anonRecord sofar name node;
-    parseTR_anonVariant sofar name node;
     parseTR_json sofar name node;
   ]
 

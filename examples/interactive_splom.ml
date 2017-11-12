@@ -8,13 +8,13 @@ let repeat = Repeat.make
   ()
 
 let xf = PositionFieldDef.make
-    ~field:(`Repeat "column")
+    ~field:(`Repeat `Column)
     ~typ:`Quantitative
     ()
 
 let yf = PositionFieldDef.make
     ~typ:`Quantitative
-    ~field:(`Repeat "row")
+    ~field:(`Repeat `Row)
     ()
 
 let colCond = ConditionLegendFieldDef.make
@@ -35,7 +35,7 @@ let encoding = Encoding.make
   ()
 
 let brushSel = IntervalSelection.make
-    ~typ:"interval"
+    ~typ:`Interval
     ~resolve:`Union
     ~on:(`String "[mousedown[event.shiftKey], window:mouseup] > window:mousemove!")
     ~translate:(`String "[mousedown[event.shiftKey], window:mouseup] > window:mousemove!")
@@ -43,9 +43,9 @@ let brushSel = IntervalSelection.make
     ()
 
 let gridSel = IntervalSelection.make
-    ~typ:"interval"
+    ~typ:`Interval
     ~resolve:`Global
-    ~bind:"scales"
+    ~bind:`Scales
     ~translate:(`String "[mousedown[!event.shiftKey], window:mouseup] > window:mousemove!")
     ~zoom:(`String "wheel![!event.shiftKey]")
     ()

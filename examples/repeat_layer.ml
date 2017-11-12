@@ -11,7 +11,7 @@ let xf = PositionFieldDef.make
 let yf = PositionFieldDef.make
     ~typ:`Quantitative
     ~aggregate:`Mean
-    ~field:(`Repeat "column")
+    ~field:(`Repeat `Column)
     ()
 
 let enc1 =

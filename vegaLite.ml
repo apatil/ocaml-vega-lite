@@ -439,22 +439,22 @@ VgSelectBinding:sig
   type nonrec t =
     {
     options: string list ;
-    input: string ;
+    input: [ `Select ] ;
     element: string option }
   val to_yojson : t -> Yojson.Safe.json
   val make :
     ?element:string ->
-      input:string ->
+      input:[ `Select ] ->
         options:string list -> unit -> t
   val withElement : string -> t -> t
-  val withInput : string -> t -> t
+  val withInput : [ `Select ] -> t -> t
   val withOptions : string list -> t -> t
 end =
 struct
   type nonrec t =
     {
     options: string list ;
-    input: string ;
+    input: [ `Select ] ;
     element: string option }
 
   let to_yojson x =
@@ -469,8 +469,7 @@ struct
                        (`String s : Yojson.Safe.json))) v))
                x.element));
          ("input",
-           (((fun (s : string)  -> (`String s : Yojson.Safe.json)))
-              x.input));
+           (((function | `Select -> `String "select")) x.input));
          ("options",
            (((fun (l : string list)  ->
                 let yojson_of_el (s : string) =
@@ -563,7 +562,7 @@ VgRangeBinding:sig
       [ `Int of int  | `Float of float ]
         option
       ;
-    input: string ;
+    input: [ `Range ] ;
     element: string option }
   val to_yojson : t -> Yojson.Safe.json
   val make :
@@ -576,9 +575,11 @@ VgRangeBinding:sig
           ->
           ?step:[ `Int of int 
                 | `Float of float ]
-            -> input:string -> unit -> t
+            ->
+            input:[ `Range ] ->
+              unit -> t
   val withElement : string -> t -> t
-  val withInput : string -> t -> t
+  val withInput : [ `Range ] -> t -> t
   val withMax :
     [ `Int of int  | `Float of float ]
       -> t -> t
@@ -595,7 +596,7 @@ struct
     step: [ `Int of int  | `Float of float ] option ;
     min: [ `Int of int  | `Float of float ] option ;
     max: [ `Int of int  | `Float of float ] option ;
-    input: string ;
+    input: [ `Range ] ;
     element: string option }
 
   let to_yojson x =
@@ -611,8 +612,7 @@ struct
                        (`String s : Yojson.Safe.json)))
                      v)) x.element));
          ("input",
-           (((fun (s : string)  ->
-                (`String s : Yojson.Safe.json)))
+           (((function | `Range -> `String "range"))
               x.input));
          ("max",
            (((function
@@ -647,18 +647,19 @@ VgRadioBinding:sig
   type nonrec t =
     {
     options: string list ;
-    input: string ;
+    input: [ `Radio ] ;
     element: string option }
   val to_yojson :
     t -> Yojson.Safe.json
   val make :
     ?element:string ->
-      input:string ->
+      input:[ `Radio ] ->
         options:string list ->
           unit -> t
   val withElement :
     string -> t -> t
-  val withInput : string -> t -> t
+  val withInput :
+    [ `Radio ] -> t -> t
   val withOptions :
     string list -> t -> t
 end =
@@ -666,7 +667,7 @@ struct
   type nonrec t =
     {
     options: string list ;
-    input: string ;
+    input: [ `Radio ] ;
     element: string option }
 
   let to_yojson x =
@@ -684,8 +685,7 @@ struct
                        (`String s : Yojson.Safe.json)))
                      v)) x.element));
          ("input",
-           (((fun (s : string)  ->
-                (`String s : Yojson.Safe.json)))
+           (((function | `Radio -> `String "radio"))
               x.input));
          ("options",
            (((fun (l : string list)  ->
@@ -2954,7 +2954,8 @@ VgCheckboxBinding:
                                                          sig
   type nonrec t =
     {
-    input: string ;
+    input:
+      [ `Checkbox ] ;
     element:
       string option }
   val to_yojson :
@@ -2963,17 +2964,21 @@ Yojson.Safe.json
   val make :
     ?element:string
       ->
-      input:string
+      input:
+        [
+          `Checkbox ]
         -> unit -> t
   val withElement :
     string -> t -> t
   val withInput :
-    string -> t -> t
+    [ `Checkbox ] ->
+      t -> t
 end =
 struct
   type nonrec t =
     {
-    input: string ;
+    input:
+      [ `Checkbox ] ;
     element:
       string option }
 
@@ -3005,12 +3010,11 @@ struct
            x.element));
          ("input",
            (
-           ((fun
-           (s :
-           string) 
+           ((function
+           | `Checkbox
            ->
-           (`String
-           s : Yojson.Safe.json)))
+           `String
+           "checkbox"))
 x.input))])                                                              
   let make ?element 
     ~input  () =
@@ -5405,12 +5409,12 @@ VLOnlyConfig:sig
     selection: SelectionConfig.t option ;
     scale: ScaleConfig.t option ;
     numberFormat: string option ;
-    invalidValues: string option ;
+    invalidValues: [ `Filter ] option ;
     countTitle: string option }
   val to_yojson : t -> Yojson.Safe.json
   val make :
     ?countTitle:string ->
-      ?invalidValues:string ->
+      ?invalidValues:[ `Filter ] ->
         ?numberFormat:string ->
           ?scale:ScaleConfig.t ->
             ?selection:SelectionConfig.t ->
@@ -5419,7 +5423,7 @@ VLOnlyConfig:sig
                   ?view:ViewConfig.t ->
                     unit -> t
   val withCountTitle : string -> t -> t
-  val withInvalidValues : string -> t -> t
+  val withInvalidValues : [ `Filter ] -> t -> t
   val withNumberFormat : string -> t -> t
   val withScale : ScaleConfig.t -> t -> t
   val withSelection :
@@ -5437,7 +5441,7 @@ struct
     selection: SelectionConfig.t option ;
     scale: ScaleConfig.t option ;
     numberFormat: string option ;
-    invalidValues: string option ;
+    invalidValues: [ `Filter ] option ;
     countTitle: string option }
 
   (** Fields
@@ -5488,9 +5492,8 @@ struct
            (((function
               | None  -> `Null
               | Some v ->
-                  ((fun (s : string)  ->
-                      (`String s : Yojson.Safe.json))) v))
-              x.invalidValues));
+                  ((function | `Filter -> `String "filter"))
+                    v)) x.invalidValues));
          ("numberFormat",
            (((function
               | None  -> `Null
@@ -5981,7 +5984,8 @@ TopoDataFormat:sig
  type nonrec t =
  {
  typ:
- string
+ [
+ `Topojson ]
  option ;
  parse:
  [ `Auto 
@@ -6012,7 +6016,9 @@ Yojson.Safe.json
  of
 Yojson.Safe.json
  ] ->
- ?typ:string
+ ?typ:
+ [
+ `Topojson ]
  ->
  unit -> t
  val
@@ -6036,13 +6042,18 @@ Yojson.Safe.json
  t -> t
  val
  withTyp :
- string ->
+ [
+ `Topojson ]
+ -> 
  t -> t
 end =
 struct
   type nonrec t =
     {
-    typ: string option ;
+    typ:
+      [ `Topojson ]
+        option
+      ;
     parse:
       [ `Auto 
       | `Json of
@@ -6142,12 +6153,11 @@ Yojson.Safe.json)))
               | None  ->
                 `Null
               | Some v ->
-                ((fun
-                (s :
-                string) 
+                ((function
+                | `Topojson
                 ->
-                (`String
-                s : Yojson.Safe.json)))
+                `String
+                "topojson"))
 v)) x.typ))])                                                         
   let make ?feature 
     ?mesh  ?parse  ?typ 
@@ -11218,7 +11228,9 @@ VerticalAlign.t
  of float ]
  option ;
  align:
- string
+ [ `Left 
+ | `Center 
+ | `Right ]
  option }
  val
  to_yojson
@@ -11227,7 +11239,10 @@ VerticalAlign.t
 Yojson.Safe.json
  val make
  :
- ?align:string
+ ?align:
+ [ `Left 
+ | `Center 
+ | `Right ]
  ->
  ?angle:
  [
@@ -11371,7 +11386,10 @@ FontWeightNumber.t
  val
  withAlign
  :
- string ->
+ [ `Left 
+ | `Center 
+ | `Right ]
+ -> 
  t -> t
  val
  withAngle
@@ -11753,7 +11771,9 @@ VerticalAlign.t
  of float ]
  option ;
  align:
- string
+ [ `Left 
+ | `Center 
+ | `Right ]
  option }
 
   (** Fields
@@ -11909,12 +11929,19 @@ VerticalAlign.t
  -> `Null
  | Some v
  ->
- ((fun
- (s :
- string) 
+ ((function
+ | `Right
  ->
- (`String
- s : Yojson.Safe.json)))
+ `String
+ "right"
+ | `Center
+ ->
+ `String
+ "center"
+ | `Left
+ ->
+ `String
+ "left"))
  v))
  x.align));
  ("angle",
@@ -13258,7 +13285,7 @@ SingleSelection:
                                                          sig
   type nonrec t =
     {
-    typ: string ;
+    typ: [ `Single ] ;
     resolve:
 SelectionResolution.t
         option
@@ -13310,7 +13337,9 @@ SingleSelection_Bind.t
            ->
            ?resolve:SelectionResolution.t
            ->
-           typ:string
+           typ:
+           [
+           `Single ]
            ->
            unit -> t
   val withBind :
@@ -13338,12 +13367,13 @@ VgEventStream.t
 SelectionResolution.t
       -> t -> t
   val withTyp :
-    string -> t -> t
+    [ `Single ] ->
+      t -> t
 end =
 struct
   type nonrec t =
     {
-    typ: string ;
+    typ: [ `Single ] ;
     resolve:
 SelectionResolution.t
         option
@@ -13540,12 +13570,11 @@ SelectionResolution.t)
            x.resolve));
          ("type",
            (
-           ((fun
-           (s :
-           string) 
+           ((function
+           | `Single
            ->
-           (`String
-           s : Yojson.Safe.json)))
+           `String
+           "single"))
 x.typ))])                                                              
   let make ?bind 
     ?encodings 
@@ -16018,19 +16047,20 @@ x.transform))])
     { x with transform = (Some v) } 
 end and
 RepeatRef:sig
-  type t = string
+  type t = [ `Row  | `Column ]
   val to_yojson : t -> Yojson.Safe.json
 end =
 struct
-  type t = string
+  type t = [ `Row  | `Column ]
 
   (** Reference to a repeated value.
   *)
   let to_yojson x =
     `Assoc
       [("repeat",
-         (((fun (s : string)  ->
-(`String s : Yojson.Safe.json))) x))]                                
+         (((function
+            | `Column -> `String "column"
+| `Row -> `String "row")) x))]                                
 end and
 Repeat:sig
   type nonrec t =
@@ -18058,7 +18088,7 @@ end and
 MultiSelection:sig
   type nonrec t =
     {
-    typ: string ;
+    typ: [ `Multi ] ;
     toggle:
       [ `Bool of bool 
       | `String of string ]
@@ -18098,7 +18128,9 @@ SingleDefChannel.t
                 | `String
                 of string ]
                 ->
-                typ:string
+                typ:
+                [
+                `Multi ]
                 ->
                 unit -> t
   val withEncodings :
@@ -18119,12 +18151,12 @@ SelectionResolution.t
     | `String of string ]
       -> t -> t
   val withTyp :
-    string -> t -> t
+    [ `Multi ] -> t -> t
 end =
 struct
   type nonrec t =
     {
-    typ: string ;
+    typ: [ `Multi ] ;
     toggle:
       [ `Bool of bool 
       | `String of string ] option ;
@@ -18269,8 +18301,9 @@ Yojson.Safe.json)))
                           v)) v))
               x.toggle));
          ("type",
-           (((fun (s : string)  ->
-                (`String s : Yojson.Safe.json)))
+           (((function
+              | `Multi ->
+                  `String "multi"))
 x.typ))])                                          
   let make ?encodings  ?fields  ?nearest
      ?on  ?resolve  ?toggle  ~typ  () =
@@ -22248,7 +22281,10 @@ Legend:sig
 DateTime.t list ]
         option
       ;
-    typ: string option ;
+    typ:
+      [ `Symbol  | `Gradient ]
+        option
+      ;
     titleAlign: string option ;
     title: string option ;
     tickCount:
@@ -22296,8 +22332,11 @@ DateTime.t list ]
                     ->
                     ?titleAlign:string
                       ->
-                      ?typ:string
-                        ->
+                      ?typ:
+                        [
+                        `Symbol 
+                        | `Gradient
+                        ] ->
                         ?values:
                         [
                         `Nums of
@@ -22349,7 +22388,9 @@ LegendOrient.t -> t -> t
     string -> t -> t
   val withTitleAlign :
     string -> t -> t
-  val withTyp : string -> t -> t
+  val withTyp :
+    [ `Symbol  | `Gradient ] ->
+      t -> t
   val withValues :
     [
       `Nums of
@@ -22380,7 +22421,7 @@ struct
       | `DateTimes of DateTime.t list ]
         option
       ;
-    typ: string option ;
+    typ: [ `Symbol  | `Gradient ] option ;
     titleAlign: string option ;
     title: string option ;
     tickCount:
@@ -22548,9 +22589,12 @@ Yojson.Safe.json)))
            (((function
               | None  -> `Null
               | Some v ->
-                  ((fun (s : string)  ->
-                      (`String s : 
-Yojson.Safe.json)))
+                  ((function
+                    | `Gradient ->
+                        `String
+                          "gradient"
+                    | `Symbol ->
+                        `String "symbol"))
                     v)) x.typ));
          ("values",
            (((function
@@ -23240,7 +23284,7 @@ JsonDataFormat:sig
  type nonrec t =
  {
  typ:
- string
+ [ `Json ]
  option ;
  property:
  string
@@ -23266,7 +23310,8 @@ Yojson.Safe.json
  ] ->
  ?property:string
  ->
- ?typ:string
+ ?typ:
+ [ `Json ]
  ->
  unit -> t
  val
@@ -23285,13 +23330,14 @@ Yojson.Safe.json
  t -> t
  val
  withTyp :
- string ->
+ [ `Json ]
+ -> 
  t -> t
 end =
 struct
   type nonrec t =
     {
-    typ: string option ;
+    typ: [ `Json ] option ;
     property:
       string option ;
     parse:
@@ -23372,12 +23418,11 @@ Yojson.Safe.json)))
               | None  ->
                 `Null
               | Some v ->
-                ((fun
-                (s :
-                string) 
+                ((function
+                | `Json
                 ->
-                (`String
-                s : Yojson.Safe.json)))
+                `String
+                "json"))
 v)) x.typ))])                                                         
   let make ?parse 
     ?property  ?typ  () =
@@ -23443,12 +23488,16 @@ SingleDefChannel.t
         list option
       ;
     bind:
-      string option }
+      [ `Scales ]
+        option
+      }
   val to_yojson :
     t ->
 Yojson.Safe.json
   val make :
-    ?bind:string ->
+    ?bind:[
+           `Scales ]
+      ->
       ?encodings:SingleDefChannel.t
         list ->
         ?fields:string
@@ -23475,7 +23524,8 @@ Yojson.Safe.json
            ->
            unit -> t
   val withBind :
-    string -> t -> t
+    [ `Scales ] ->
+      t -> t
   val withEncodings
     :
 SingleDefChannel.t
@@ -23545,7 +23595,9 @@ SingleDefChannel.t
         list option
       ;
     bind:
-      string option }
+      [ `Scales ]
+        option
+      }
 
   (** Fields
   
@@ -23613,12 +23665,11 @@ SingleDefChannel.t
            -> `Null
            | Some v
            ->
-           ((fun
-           (s :
-           string) 
+           ((function
+           | `Scales
            ->
-           (`String
-           s : Yojson.Safe.json)))
+           `String
+           "scales"))
            v))
            x.bind));
          ("encodings",
@@ -23847,7 +23898,10 @@ IntervalSelection:
       | `String
       of string ]
       option ;
-    typ: string ;
+    typ:
+      [
+      `Interval ]
+      ;
     translate:
       [
       `Bool of
@@ -23873,14 +23927,17 @@ SingleDefChannel.t
       list
       option ;
     bind:
-      string
+      [
+      `Scales ]
       option }
   val to_yojson
     :
     t ->
 Yojson.Safe.json
   val make :
-    ?bind:string
+    ?bind:
+      [
+      `Scales ]
       ->
       ?encodings:SingleDefChannel.t
       list ->
@@ -23906,12 +23963,15 @@ Yojson.Safe.json
       | `String
       of string ]
       ->
-      typ:string
+      typ:
+      [
+      `Interval ]
       ->
       unit -> t
   val withBind
     :
-    string ->
+    [ `Scales ]
+      -> 
       t -> t
   val
     withEncodings
@@ -23952,7 +24012,9 @@ SelectionResolution.t
       -> 
       t -> t
   val withTyp :
-    string ->
+    [
+      `Interval ]
+      -> 
       t -> t
   val withZoom
     :
@@ -23975,7 +24037,10 @@ struct
       | `String
       of string ]
       option ;
-    typ: string ;
+    typ:
+      [
+      `Interval ]
+      ;
     translate:
       [
       `Bool of
@@ -24001,7 +24066,8 @@ SingleDefChannel.t
       list
       option ;
     bind:
-      string
+      [
+      `Scales ]
       option }
 
   (** Fields
@@ -24073,12 +24139,11 @@ List.filter
       -> `Null
       | Some v
       ->
-      ((fun
-      (s :
-      string) 
+      ((function
+      | `Scales
       ->
-      (`String
-      s : Yojson.Safe.json)))
+      `String
+      "scales"))
       v))
       x.bind));
       ("encodings",
@@ -24197,12 +24262,11 @@ Yojson.Safe.json)))
       v)) v))
       x.translate));
       ("type",
-      (((fun
-      (s :
-      string) 
+      (((function
+      | `Interval
       ->
-      (`String
-      s : Yojson.Safe.json)))
+      `String
+      "interval"))
       x.typ));
       ("zoom",
       (((function
@@ -24319,7 +24383,11 @@ InterpolateParams:
  type nonrec t =
  {
  typ:
- string ;
+ [ `Rgb 
+ | `Cubehelix
+  | 
+ `Cubehelix_long
+ ] ;
  gamma:
  [
  `Int of
@@ -24341,8 +24409,12 @@ Yojson.Safe.json
  | `Float
  of float ]
  ->
- typ:string
- ->
+ typ:
+ [ `Rgb 
+ | `Cubehelix
+  | 
+ `Cubehelix_long
+ ] ->
  unit -> t
  val
  withGamma
@@ -24356,14 +24428,22 @@ Yojson.Safe.json
  t -> t
  val
  withTyp :
- string ->
+ [ `Rgb 
+ | `Cubehelix
+  | 
+ `Cubehelix_long
+ ] ->
  t -> t
 end =
 struct
  type nonrec t =
  {
  typ:
- string ;
+ [ `Rgb 
+ | `Cubehelix
+  | 
+ `Cubehelix_long
+ ] ;
  gamma:
  [
  `Int of
@@ -24401,12 +24481,18 @@ struct
  v))
  x.gamma));
  ("type",
- (((fun
- (s :
- string) 
+ (((function
+ | `Cubehelix_long
  ->
- (`String
- s : Yojson.Safe.json)))
+ `String
+ "cubehelix_long"
+ | `Cubehelix
+ ->
+ `String
+ "cubehelix"
+ | `Rgb ->
+ `String
+ "rgb"))
  x.typ))]) 
  let make
  ?gamma 
@@ -29020,22 +29106,22 @@ end and
 CsvDataFormat:sig
   type nonrec t =
     {
-    typ: string option ;
+    typ: [ `Csv  | `Tsv ] option ;
     parse:
       [ `Auto  | `Json of Yojson.Safe.json ] option }
   val to_yojson : t -> Yojson.Safe.json
   val make :
     ?parse:[ `Auto  | `Json of Yojson.Safe.json ]
-      -> ?typ:string -> unit -> t
+      -> ?typ:[ `Csv  | `Tsv ] -> unit -> t
   val withParse :
     [ `Auto  | `Json of Yojson.Safe.json ] ->
       t -> t
-  val withTyp : string -> t -> t
+  val withTyp : [ `Csv  | `Tsv ] -> t -> t
 end =
 struct
   type nonrec t =
     {
-    typ: string option ;
+    typ: [ `Csv  | `Tsv ] option ;
     parse: [ `Auto  | `Json of Yojson.Safe.json ] option }
 
   (** Fields
@@ -29070,8 +29156,9 @@ struct
            (((function
               | None  -> `Null
               | Some v ->
-                  ((fun (s : string)  ->
-(`String s : Yojson.Safe.json))) v)) x.typ))])                 
+                  ((function
+                    | `Tsv -> `String "tsv"
+| `Csv -> `String "csv")) v)) x.typ))])                 
   let make ?parse  ?typ  () = { typ; parse } 
   let withParse v x = { x with parse = (Some v) } 
   let withTyp v x = { x with typ = (Some v) } 
@@ -29098,7 +29185,7 @@ Config:sig
     mark: MarkConfig.t option ;
     line: MarkConfig.t option ;
     legend: LegendConfig.t option ;
-    invalidValues: string option ;
+    invalidValues: [ `Filter ] option ;
     countTitle: string option ;
     circle: MarkConfig.t option ;
     bar: BarConfig.t option ;
@@ -29129,8 +29216,8 @@ Config:sig
                           ?bar:BarConfig.t ->
                             ?circle:MarkConfig.t ->
                               ?countTitle:string ->
-                                ?invalidValues:string
-                                  ->
+                                ?invalidValues:
+                                  [ `Filter ] ->
                                   ?legend:LegendConfig.t
                                     ->
                                     ?line:MarkConfig.t
@@ -29184,7 +29271,7 @@ Config:sig
   val withBar : BarConfig.t -> t -> t
   val withCircle : MarkConfig.t -> t -> t
   val withCountTitle : string -> t -> t
-  val withInvalidValues : string -> t -> t
+  val withInvalidValues : [ `Filter ] -> t -> t
   val withLegend : LegendConfig.t -> t -> t
   val withLine : MarkConfig.t -> t -> t
   val withMark : MarkConfig.t -> t -> t
@@ -29227,7 +29314,7 @@ struct
     mark: MarkConfig.t option ;
     line: MarkConfig.t option ;
     legend: LegendConfig.t option ;
-    invalidValues: string option ;
+    invalidValues: [ `Filter ] option ;
     countTitle: string option ;
     circle: MarkConfig.t option ;
     bar: BarConfig.t option ;
@@ -29468,9 +29555,8 @@ struct
            (((function
               | None  -> `Null
               | Some v ->
-                  ((fun (s : string)  ->
-                      (`String s : Yojson.Safe.json))) v))
-              x.invalidValues));
+                  ((function | `Filter -> `String "filter"))
+                    v)) x.invalidValues));
          ("legend",
            (((function
               | None  -> `Null
