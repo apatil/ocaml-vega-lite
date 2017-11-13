@@ -1,1 +1,3 @@
-fun ?x:(blarg=12) -> (Some blarg)
+type t = {
+  x : int [@typ `Ordinal]
+}

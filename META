@@ -1,6 +1,6 @@
 # OASIS_START
 version = "0.0.1"
-description = "Data visualization for OCaml with vega-lite"
+description = "Strongly typed representation of Vega-Lite in OCaml"
 
 requires = "yojson"
 archive(byte) = "vegaLite.cma"

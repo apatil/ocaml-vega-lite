@@ -7,6 +7,15 @@ Vega-Lite object.
 
 Status: **pre-release**, expect breaking changes.
 
+## You probably want Aplomb
+
+If you want to visualize data in OCaml, you probably want
+[Aplomb](https://github.com/apatil/aplomb) instead of this package.
+
+This package is for you if you're looking for an explicit and direct mapping
+between your OCaml code and Vega-Lite. It's also useful as a reference when
+creating advanced visualizations with Aplomb.
+
 ## Usage
 
 The bar.ml example shows you how to create a plot spec in OCaml, then
